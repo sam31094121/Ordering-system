@@ -1,0 +1,5 @@
+Flask==2.3.2
+Flask-SocketIO==5.3.4
+gunicorn==20.1.0
+pytz==2024.2
+# eventlet==0.33.3  # 可選：部署到 Render 時取消註解
