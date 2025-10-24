@@ -11,7 +11,7 @@ from database import init_db, get_db
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SESSION_SECRET", "your-secret-key-here")
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 init_db()
 
