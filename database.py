@@ -22,7 +22,7 @@ class MenuItem(db.Model):
             'description': self.description,
             'category': self.category,
             'available': self.available,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() + 'Z' if self.created_at else None
         }
 
 class Order(db.Model):
@@ -44,6 +44,6 @@ class Order(db.Model):
             'total_amount': self.total_amount,
             'status': self.status,
             'notes': self.notes,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'created_at': self.created_at.isoformat() + 'Z' if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None
         }
