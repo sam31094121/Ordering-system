@@ -1,65 +1,64 @@
-import sqlite3
 import os
 from datetime import datetime
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate  # 可選，用於未來遷移
 
-DATABASE = "restaurant.db"
+db = SQLAlchemy()
 
+# 菜單項目模型
+class MenuItem(db.Model):
+    __tablename__ = 'menu_items'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    description = db.Column(db.Text)
+    category = db.Column(db.String(50))
+    available = db.Column(db.Integer, default=1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'price': self.price,
+            'description': self.description,
+            'category': self.category
+        }
 
+# 訂單模型
+class Order(db.Model):
+    __tablename__ = 'orders'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_number = db.Column(db.String(50), unique=True, nullable=False)
+    items = db.Column(db.Text, nullable=False)  # JSON 字串
+    total_amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), default='pending')
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-def init_db():
-    if os.path.exists(DATABASE):
-        print(f"Database {DATABASE} already exists. Skipping initialization.")
-        return
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'order_number': self.order_number,
+            'items': self.items,
+            'total_amount': self.total_amount,
+            'status': self.status,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
 
-    conn = get_db()
-    cursor = conn.cursor()
+def init_db(app):
+    """初始化資料庫：建立表格"""
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    db.init_app(app)
+    
+    with app.app_context():
+        db.create_all()  # 建立表格（如果不存在）
+        print("PostgreSQL database initialized successfully!")
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS menu_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            price REAL NOT NULL,
-            description TEXT,
-            category TEXT,
-            available INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """
-    )
+# 可選：使用 Migrate 處理未來變更
+# migrate = Migrate(db)
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_number TEXT UNIQUE NOT NULL,
-            items TEXT NOT NULL,
-            total_amount REAL NOT NULL,
-            status TEXT DEFAULT 'pending',
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """
-    )
-
-    sample_menu = [
-        ("漢堡", 100, "經典牛肉漢堡附薯條", "主菜"),
-        ("起司漢堡", 120, "附起司與特製醬料的漢堡", "主菜"),
-        ("可樂", 30, "冰可樂", "飲料"),
-        ("巧克力蛋糕", 70, "濃郁巧克力蛋糕", "甜點"),
-    ]
-
-    cursor.executemany(
-        "INSERT INTO menu_items (name, price, description, category) VALUES (?, ?, ?, ?)",
-        sample_menu,
-    )
-
-    conn.commit()
-    conn.close()
-    print(f"Database {DATABASE} initialized successfully with sample menu!")
