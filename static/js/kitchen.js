@@ -73,7 +73,7 @@ async function confirmDeleteOrder(orderId) {
                 }
             }
             
-            // 等待服務端廣播 order_deleted 事件來更新 orders
+            // 等待服務端廣播 order_deleted 事件
             showAlert('訂單已成功刪除', 'success');
         } catch (error) {
             console.error('Error deleting order:', error);
@@ -106,6 +106,26 @@ async function loadOrders() {
     }
 }
 
+function formatOrderTime(createdAt) {
+    // 直接使用 UTC 時間並指定顯示為 Asia/Taipei (CST)
+    try {
+        const date = new Date(createdAt);
+        if (isNaN(date.getTime())) {
+            console.error('Invalid created_at format:', createdAt);
+            return '無效時間';
+        }
+        return date.toLocaleTimeString('zh-TW', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false, // 24 小時制
+            timeZone: 'Asia/Taipei'
+        });
+    } catch (error) {
+        console.error('Error formatting time:', error, 'createdAt:', createdAt);
+        return '時間格式錯誤';
+    }
+}
+
 function displayOrders() {
     const container = document.getElementById('orders-container');
     const noOrders = document.getElementById('no-orders');
@@ -129,7 +149,7 @@ function displayOrders() {
     let html = '';
     filteredOrders.forEach(order => {
         const statusClass = `status-${order.status}`;
-        const orderTime = new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const orderTime = formatOrderTime(order.created_at); // 使用新函數
         
         html += `
             <div class="col-lg-4 col-md-6">
@@ -196,7 +216,7 @@ async function updateStatus(orderId, newStatus) {
             }
         }
         
-        // 不進行本地更新，依賴服務端 order_updated 廣播
+        // 等待服務端 order_updated 廣播
         showAlert('訂單狀態更新成功', 'success');
     } catch (error) {
         console.error('更新狀態錯誤:', error);
@@ -255,11 +275,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('input[name="filter"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             currentFilter = e.target.value;
-            displayOrders(); // 直接重新渲染，避免重新載入
+            displayOrders(); // 直接重新渲染
         });
     });
 });
-
 
 
 
