@@ -11,14 +11,13 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
 # 資料庫配置
 database_url = os.getenv('DATABASE_URL')
 if database_url:
-    # 處理 Render 的 DATABASE_URL 格式
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql+psycopg2://', 1)
     elif not database_url.startswith('postgresql+psycopg2://'):
         database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///orders.db'  # 本地開發用
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///orders.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
@@ -27,14 +26,11 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_timeout': 30
 }
 
-# 導入並初始化資料庫
 from database import db, MenuItem, Order
 db.init_app(app)
 
-# 初始化 SocketIO 使用 gevent
 socketio = SocketIO(app, async_mode='gevent')
 
-# 在應用上下文中創建資料庫表
 with app.app_context():
     db.create_all()
 
@@ -108,7 +104,7 @@ def manage_orders():
             db.session.commit()
 
             print(f"New order created: {new_order.order_number}")
-            socketio.emit("new_order", new_order.to_dict(), broadcast=True)
+            socketio.emit("new_order", new_order.to_dict())  # 移除 broadcast=True
             return jsonify({"message": "訂單已送出", "order": new_order.to_dict()}), 201
         except Exception as e:
             db.session.rollback()
@@ -142,7 +138,7 @@ def update_order_status(order_id):
         db.session.commit()
 
         print(f"Order {order.order_number} status updated to {new_status}")
-        socketio.emit("order_updated", order.to_dict(), broadcast=True)
+        socketio.emit("order_updated", order.to_dict())  # 移除 broadcast=True
         return jsonify(order.to_dict())
     except Exception as e:
         db.session.rollback()
@@ -157,7 +153,7 @@ def delete_order(order_id):
         db.session.commit()
 
         print(f"Order {order.order_number} deleted")
-        socketio.emit("order_deleted", {"order_id": order_id}, broadcast=True)
+        socketio.emit("order_deleted", {"order_id": order_id})  # 移除 broadcast=True
         return jsonify({"message": "訂單已刪除"}), 200
     except Exception as e:
         db.session.rollback()
@@ -174,3 +170,4 @@ def handle_disconnect():
 
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=10000)
+
