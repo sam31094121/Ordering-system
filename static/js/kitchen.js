@@ -1,5 +1,6 @@
 let orders = [];
 let currentFilter = 'all';
+let socket; // 全域 socket 變數
 
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
@@ -68,12 +69,11 @@ async function confirmDeleteOrder(orderId) {
                     const errorData = await response.json();
                     throw new Error(`刪除訂單失敗: ${errorData.error || '未知錯誤'}`);
                 } else {
-                    throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
+                    throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}${response.status === 404 ? '（訂單可能已不存在）' : ''}`);
                 }
             }
             
-            orders = orders.filter(order => order.id !== orderId);
-            displayOrders();
+            // 等待服務端廣播 order_deleted 事件來更新 orders
             showAlert('訂單已成功刪除', 'success');
         } catch (error) {
             console.error('Error deleting order:', error);
@@ -93,11 +93,12 @@ async function loadOrders() {
         orders = await response.json();
         console.log('收到訂單:', orders);
         for (let order of orders) {
-            // 檢查 items 是否已為陣列，若不是則解析
             if (typeof order.items === 'string') {
                 order.items = JSON.parse(order.items);
             }
         }
+        // 按 created_at 降序排序
+        orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         displayOrders();
     } catch (error) {
         console.error('載入訂單錯誤:', error);
@@ -191,20 +192,11 @@ async function updateStatus(orderId, newStatus) {
                 const errorData = await response.json();
                 throw new Error(`更新訂單狀態失敗: ${errorData.error || '未知錯誤'}`);
             } else {
-                throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
+                throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}${response.status === 404 ? '（訂單可能已不存在）' : ''}`);
             }
         }
         
-        const updatedOrder = await response.json();
-        if (typeof updatedOrder.items === 'string') {
-            updatedOrder.items = JSON.parse(updatedOrder.items);
-        }
-        const index = orders.findIndex(order => order.id === orderId);
-        if (index !== -1) {
-            orders[index] = updatedOrder;
-            displayOrders();
-        }
-        socket.emit('order_updated', updatedOrder);
+        // 不進行本地更新，依賴服務端 order_updated 廣播
         showAlert('訂單狀態更新成功', 'success');
     } catch (error) {
         console.error('更新狀態錯誤:', error);
@@ -213,7 +205,7 @@ async function updateStatus(orderId, newStatus) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const socket = io();
+    socket = io(); // 將 socket 設為全域變數
 
     socket.on('connect', () => {
         console.log('連接到伺服器');
@@ -226,6 +218,8 @@ document.addEventListener('DOMContentLoaded', () => {
             order.items = JSON.parse(order.items);
         }
         orders.unshift(order);
+        // 按 created_at 降序排序
+        orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         displayOrders();
         showAlert('收到新訂單！', 'success');
     });
@@ -238,8 +232,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const index = orders.findIndex(order => order.id === updatedOrder.id);
         if (index !== -1) {
             orders[index] = updatedOrder;
-            displayOrders();
+        } else {
+            orders.push(updatedOrder); // 若訂單不存在，添加到列表
         }
+        // 按 created_at 降序排序
+        orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        displayOrders();
     });
 
     socket.on('order_deleted', (data) => {
@@ -257,10 +255,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('input[name="filter"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             currentFilter = e.target.value;
-            loadOrders();
+            displayOrders(); // 直接重新渲染，避免重新載入
         });
     });
 });
+
 
 
 
