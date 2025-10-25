@@ -2,10 +2,7 @@ import os
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-import eventlet  # 確保導入 eventlet
-
-# 修補 eventlet 以避免鎖問題
-eventlet.monkey_patch()
+import eventlet  # 確保導入，但已由 app.py 處理
 
 db = SQLAlchemy()
 
@@ -56,18 +53,14 @@ class Order(db.Model):
 def init_db(app):
     """初始化資料庫"""
     try:
-        # 設定資料庫 URL
         app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
-        # 關閉修改追蹤（提升效能）
         app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        # 優化連線池設定（移除 GreenPool，保留基本參數）
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'pool_pre_ping': True,  # 檢查連線是否有效
-            'pool_size': 5,        # 最多 5 個連線
-            'max_overflow': 10,    # 額外連線上限
-            'pool_timeout': 30     # 等待連線的時間（秒）
+            'pool_pre_ping': True,
+            'pool_size': 5,
+            'max_overflow': 10,
+            'pool_timeout': 30
         }
-        # 初始化資料庫
         db.init_app(app)
         
         with app.app_context():
@@ -75,4 +68,4 @@ def init_db(app):
             print("PostgreSQL database initialized successfully!")
     except Exception as e:
         print(f"Database initialization failed: {e}")
-        raise  # 如果失敗，顯示錯誤
+        raise
