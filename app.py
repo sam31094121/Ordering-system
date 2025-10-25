@@ -1,19 +1,25 @@
+import eventlet
+eventlet.monkey_patch()  # 必須在所有導入之前執行
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
-from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 import json
 import os
-from datetime import datetime
-from database import init_db, db, MenuItem, Order
 
+# 初始化應用程式
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SESSION_SECRET", "your-secret-key-here")
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = 'your-secret-key'  # 替換為安全的密鑰
+socketio = SocketIO(app, async_mode='eventlet')
+
+# 導入資料庫模組
+from database import init_db, db
 
 # 初始化資料庫
 init_db(app)
 
+# 路由
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -26,131 +32,68 @@ def waiter():
 def kitchen():
     return render_template("kitchen.html")
 
-@app.route("/admin")
+@app.route("/admin", methods=["GET", "POST"])
 def admin_menu():
     if request.method == "POST":
         action = request.form.get("action")
-        
         if action == "add_or_update":
-            category = request.form["category"]
-            name = request.form["name"]
-            price = float(request.form["price"])
-            description = request.form["description"]
-            item_id = request.form.get("item_id")
-            
-            if item_id:
-                # 修改
-                item = MenuItem.query.get(item_id)
-                if item:
-                    item.category = category
-                    item.name = name
-                    item.price = price
-                    item.description = description
-                    item.available = 1
-            else:
-                # 新增
-                item = MenuItem(category=category, name=name, price=price, description=description, available=1)
-                db.session.add(item)
-            
+            name = request.form.get("name")
+            price = float(request.form.get("price"))
+            description = request.form.get("description")
+            category = request.form.get("category")
+            new_item = MenuItem(name=name, price=price, description=description, category=category)
+            db.session.add(new_item)
             db.session.commit()
-        
+            return redirect(url_for("admin_menu"))
         elif action == "delete":
-            item_id = request.form["item_id"]
+            item_id = request.form.get("item_id")
             item = MenuItem.query.get(item_id)
             if item:
                 db.session.delete(item)
                 db.session.commit()
-        
-        return redirect(url_for("admin_menu"))
+            return redirect(url_for("admin_menu"))
     
-    # GET：顯示菜單
     items = MenuItem.query.order_by(MenuItem.category, MenuItem.id).all()
     menu_items = [item.to_dict() for item in items]
     return render_template("admin.html", menu_items=menu_items)
 
 @app.route("/api/menu", methods=["GET"])
 def get_menu():
-    items = MenuItem.query.filter_by(available=1).order_by(MenuItem.category, MenuItem.name).all()
-    menu = [item.to_dict() for item in items]
-    return jsonify(menu)
-
-@app.route("/api/orders", methods=["GET"])
-def get_orders():
-    filter_status = request.args.get("filter")
-    query = Order.query.order_by(Order.created_at.desc())
-    if filter_status and filter_status != "all":
-        query = query.filter_by(status=filter_status)
-    orders = query.all()
-    order_list = [order.to_dict() for order in orders]
-    for order in order_list:
-        order['items'] = json.loads(order['items'])
-    return jsonify(order_list)
-
-@app.route("/api/orders/pending", methods=["GET"])
-def get_pending_orders():
-    orders = Order.query.filter(Order.status != 'completed').order_by(Order.created_at.asc()).all()
-    order_list = [order.to_dict() for order in orders]
-    for order in order_list:
-        order['items'] = json.loads(order['items'])
-    return jsonify(order_list)
+    try:
+        items = MenuItem.query.filter_by(available=1).order_by(MenuItem.category, MenuItem.name).all()
+        menu = [item.to_dict() for item in items]
+        return jsonify(menu)
+    except Exception as e:
+        print(f"Menu query error: {e}")
+        return jsonify([]), 500
 
 @app.route("/api/orders", methods=["POST"])
 def create_order():
-    data = request.json
-    items = data.get("items", [])
-    total_amount = data.get("total_amount", 0)
-    notes = data.get("notes", "")
-
-    # 生成訂單編號
-    count = db.session.query(Order).count()
-    order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{count + 1:04d}"
-
-    # 建立新訂單
-    order = Order(
-        order_number=order_number,
-        items=json.dumps(items),
-        total_amount=total_amount,
-        status="pending",
-        notes=notes
-    )
-    db.session.add(order)
-    db.session.commit()
-
-    order_data = order.to_dict()
-    order_data['items'] = items  # 還原為列表
-
-    socketio.emit("new_order", order_data)
-    return jsonify(order_data), 201
-
-@app.route("/api/orders/<int:order_id>/status", methods=["PUT"])
-def update_order_status(order_id):
-    order = Order.query.get_or_404(order_id)
-    data = request.json
-    new_status = data.get("status")
-
-    if new_status not in ["pending", "received", "cooking", "ready", "completed"]:
-        return jsonify({"error": "Invalid status"}), 400
-
-    order.status = new_status
-    db.session.commit()
-
-    order_data = order.to_dict()
-    order_data['items'] = json.loads(order_data['items'])
-
-    socketio.emit("order_updated", order_data)
-    return jsonify(order_data)
-
-@app.route("/api/orders/<int:order_id>", methods=["DELETE"])
-def delete_order(order_id):
-    order = Order.query.get_or_404(order_id)
     try:
-        db.session.delete(order)
+        data = request.get_json()
+        if not data or "items" not in data or not data["items"]:
+            return jsonify({"error": "訂單內容為空"}), 400
+
+        order_number = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        items_json = json.dumps(data["items"])
+        total_amount = sum(item["price"] * item["quantity"] for item in data["items"])
+
+        new_order = Order(
+            order_number=order_number,
+            items=items_json,
+            total_amount=total_amount,
+            status="pending",
+            notes=data.get("notes", "")
+        )
+        db.session.add(new_order)
         db.session.commit()
-        socketio.emit("order_deleted", {"order_id": order_id})
-        return jsonify({"message": "Order deleted successfully"}), 200
+
+        socketio.emit("new_order", new_order.to_dict(), broadcast=True)
+        return jsonify({"message": "訂單已送出", "order": new_order.to_dict()}), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        print(f"Order creation error: {e}")
+        return jsonify({"error": "送出訂單失敗，請稍後重試"}), 500
 
 if __name__ == "__main__":
-    socketio.run(app, host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "5000")), debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=10000)
