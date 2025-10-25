@@ -1,6 +1,6 @@
 import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from datetime import datetime
 import json
 
@@ -28,7 +28,6 @@ socketio = SocketIO(app, async_mode='gevent')
 with app.app_context():
     db.create_all()
 
-# Routes and other code remain unchanged
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -71,10 +70,11 @@ def get_menu():
     try:
         items = MenuItem.query.filter_by(available=1).order_by(MenuItem.category, MenuItem.name).all()
         menu = [item.to_dict() for item in items]
+        print(f"Retrieved {len(menu)} menu items")  # 添加日誌
         return jsonify(menu)
     except Exception as e:
         print(f"Menu query error: {e}")
-        return jsonify([]), 500
+        return jsonify({"error": "載入菜單失敗"}), 500
 
 @app.route("/api/orders", methods=["GET", "POST"])
 def manage_orders():
@@ -98,9 +98,10 @@ def manage_orders():
             db.session.add(new_order)
             db.session.commit()
 
-            # 修改這一行：移除 broadcast=True
-            socketio.emit("new_order", new_order.to_dict())  # 預設廣播到所有客戶端
-            return jsonify({"message": "訂單已送出", "order": new_order.to_dict()}), 201
+            order_data = new_order.to_dict()
+            print(f"New order created: {order_data}")  # 添加日誌
+            socketio.emit("new_order", order_data)
+            return jsonify({"message": "訂單已送出", "order": order_data}), 201
         except Exception as e:
             db.session.rollback()
             print(f"Order creation error: {e}")
@@ -108,16 +109,17 @@ def manage_orders():
     elif request.method == "GET":
         try:
             filter_status = request.args.get("filter", "all")
+            print(f"Fetching orders with filter: {filter_status}")  # 添加日誌
             if filter_status == "all":
                 orders = Order.query.all()
             else:
                 orders = Order.query.filter_by(status=filter_status).all()
-            return jsonify([order.to_dict() for order in orders])
+            order_list = [order.to_dict() for order in orders]
+            print(f"Retrieved {len(order_list)} orders")  # 添加日誌
+            return jsonify(order_list)
         except Exception as e:
             print(f"Order query error: {e}")
-            return jsonify([]), 500
+            return jsonify({"error": "載入訂單失敗"}), 500
 
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=10000)
-
-
