@@ -62,17 +62,22 @@ async function confirmDeleteOrder(orderId) {
                 }
             });
             
-            if (response.ok) {
-                orders = orders.filter(order => order.id !== orderId);
-                displayOrders();
-                showAlert('訂單已成功刪除', 'success');
-            } else {
-                const errorData = await response.json();
-                showAlert(`刪除訂單失敗: ${errorData.error || '未知錯誤'}`, 'danger');
+            if (!response.ok) {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    throw new Error(`刪除訂單失敗: ${errorData.error || '未知錯誤'}`);
+                } else {
+                    throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
+                }
             }
+            
+            orders = orders.filter(order => order.id !== orderId);
+            displayOrders();
+            showAlert('訂單已成功刪除', 'success');
         } catch (error) {
             console.error('Error deleting order:', error);
-            showAlert('刪除訂單時發生錯誤', 'danger');
+            showAlert(`刪除訂單時發生錯誤: ${error.message}`, 'danger');
         }
     }
 }
@@ -206,6 +211,7 @@ async function updateStatus(orderId, newStatus) {
         showAlert(`更新狀態時發生錯誤: ${error.message}`, 'danger');
     }
 }
+
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
@@ -216,7 +222,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('new_order', (order) => {
         console.log('收到新訂單:', order);
-        order.items = JSON.parse(order.items);
+        if (typeof order.items === 'string') {
+            order.items = JSON.parse(order.items);
+        }
         orders.unshift(order);
         displayOrders();
         showAlert('收到新訂單！', 'success');
@@ -224,7 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('order_updated', (updatedOrder) => {
         console.log('訂單更新:', updatedOrder);
-        updatedOrder.items = JSON.parse(updatedOrder.items);
+        if (typeof updatedOrder.items === 'string') {
+            updatedOrder.items = JSON.parse(updatedOrder.items);
+        }
         const index = orders.findIndex(order => order.id === updatedOrder.id);
         if (index !== -1) {
             orders[index] = updatedOrder;
