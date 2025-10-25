@@ -80,17 +80,19 @@ async function confirmDeleteOrder(orderId) {
 async function loadOrders() {
     try {
         const url = `/api/orders?filter=${currentFilter}`;
+        console.log('正在載入訂單:', url);
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
         }
         orders = await response.json();
+        console.log('收到訂單:', orders);
         for (let order of orders) {
-            order.items = JSON.parse(order.items); // 還原 items 為陣列
+            order.items = JSON.parse(order.items);
         }
         displayOrders();
     } catch (error) {
-        console.error('Error loading orders:', error);
+        console.error('載入訂單錯誤:', error);
         showAlert('載入訂單時發生錯誤', 'danger');
     }
 }
@@ -177,35 +179,34 @@ async function updateStatus(orderId, newStatus) {
         
         if (response.ok) {
             const updatedOrder = await response.json();
-            updatedOrder.items = JSON.parse(updatedOrder.items); // 還原 items
+            updatedOrder.items = JSON.parse(updatedOrder.items);
             const index = orders.findIndex(order => order.id === orderId);
             if (index !== -1) {
                 orders[index] = updatedOrder;
                 displayOrders();
             }
-            socket.emit('order_updated', updatedOrder); // 修正為 socket 而非 socketio
+            socket.emit('order_updated', updatedOrder);
             showAlert('訂單狀態更新成功', 'success');
         } else {
             const errorData = await response.json();
             showAlert(`更新訂單狀態失敗: ${errorData.error || '未知錯誤'}`, 'danger');
         }
     } catch (error) {
-        console.error('Error updating status:', error);
+        console.error('更新狀態錯誤:', error);
         showAlert('更新狀態時發生錯誤', 'danger');
     }
 }
 
-// Socket.IO 連線
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
     socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('連接到伺服器');
         loadOrders();
     });
 
     socket.on('new_order', (order) => {
-        console.log('New order received:', order); // 添加日誌以便排查
+        console.log('收到新訂單:', order);
         order.items = JSON.parse(order.items);
         orders.unshift(order);
         displayOrders();
@@ -213,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('order_updated', (updatedOrder) => {
-        console.log('Order updated:', updatedOrder); // 添加日誌以便排查
+        console.log('訂單更新:', updatedOrder);
         updatedOrder.items = JSON.parse(updatedOrder.items);
         const index = orders.findIndex(order => order.id === updatedOrder.id);
         if (index !== -1) {
@@ -223,15 +224,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('order_deleted', (data) => {
-        console.log('Order deleted:', data); // 添加日誌以便排查
+        console.log('訂單刪除:', data);
         orders = orders.filter(order => order.id !== data.order_id);
         displayOrders();
         showAlert('訂單已刪除', 'success');
     });
 
     socket.on('connect_error', (error) => {
-        console.error('Socket.IO connection error:', error);
-        showAlert('無法連接到服務器，請檢查網絡', 'danger');
+        console.error('連線錯誤:', error);
+        showAlert('無法連接到伺服器，請檢查網絡', 'danger');
     });
 
     document.querySelectorAll('input[name="filter"]').forEach(radio => {
@@ -241,3 +242,4 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
