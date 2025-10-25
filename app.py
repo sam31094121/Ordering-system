@@ -1,14 +1,13 @@
 import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
-from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import json
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)  # 隨機生成安全密鑰
+app.config['SECRET_KEY'] = os.urandom(24)
 
-# 資料庫配置
+# Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///orders.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -18,16 +17,18 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_timeout': 30
 }
 
-# 初始化 SocketIO 使用 gevent
+# Import and initialize database
+from database import db, MenuItem, Order
+db.init_app(app)  # Bind the db instance to the Flask app
+
+# Initialize SocketIO with gevent
 socketio = SocketIO(app, async_mode='gevent')
 
-# 初始化資料庫
-db = SQLAlchemy(app)
+# Create database tables within app context
+with app.app_context():
+    db.create_all()
 
-# 導入模型（在 db 初始化後）
-from database import MenuItem, Order
-
-# 路由定義
+# Routes and other code remain unchanged
 @app.route("/")
 def index():
     return render_template("index.html")
