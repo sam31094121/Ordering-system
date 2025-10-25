@@ -180,26 +180,32 @@ async function updateStatus(orderId, newStatus) {
             body: JSON.stringify({ status: newStatus })
         });
         
-        if (response.ok) {
-            const updatedOrder = await response.json();
-            updatedOrder.items = JSON.parse(updatedOrder.items);
-            const index = orders.findIndex(order => order.id === orderId);
-            if (index !== -1) {
-                orders[index] = updatedOrder;
-                displayOrders();
+        if (!response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json();
+                throw new Error(`更新訂單狀態失敗: ${errorData.error || '未知錯誤'}`);
+            } else {
+                throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
             }
-            socket.emit('order_updated', updatedOrder);
-            showAlert('訂單狀態更新成功', 'success');
-        } else {
-            const errorData = await response.json();
-            showAlert(`更新訂單狀態失敗: ${errorData.error || '未知錯誤'}`, 'danger');
         }
+        
+        const updatedOrder = await response.json();
+        if (typeof updatedOrder.items === 'string') {
+            updatedOrder.items = JSON.parse(updatedOrder.items);
+        }
+        const index = orders.findIndex(order => order.id === orderId);
+        if (index !== -1) {
+            orders[index] = updatedOrder;
+            displayOrders();
+        }
+        socket.emit('order_updated', updatedOrder);
+        showAlert('訂單狀態更新成功', 'success');
     } catch (error) {
         console.error('更新狀態錯誤:', error);
-        showAlert('更新狀態時發生錯誤', 'danger');
+        showAlert(`更新狀態時發生錯誤: ${error.message}`, 'danger');
     }
 }
-
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
@@ -245,5 +251,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
 
 
