@@ -98,7 +98,8 @@ def manage_orders():
             db.session.add(new_order)
             db.session.commit()
 
-            socketio.emit("new_order", new_order.to_dict(), broadcast=True)
+            # 修改這一行：移除 broadcast=True
+            socketio.emit("new_order", new_order.to_dict())  # 預設廣播到所有客戶端
             return jsonify({"message": "訂單已送出", "order": new_order.to_dict()}), 201
         except Exception as e:
             db.session.rollback()
@@ -118,3 +119,4 @@ def manage_orders():
 
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=10000)
+
