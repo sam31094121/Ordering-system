@@ -4,7 +4,7 @@ from flask_cors import CORS
 import json
 import os
 from datetime import datetime
-from database import init_db, db, MenuItem, Order  # 新增匯入
+from database import init_db, db, MenuItem, Order
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SESSION_SECRET", "your-secret-key-here")
@@ -14,6 +14,60 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # 初始化資料庫
 init_db(app)
 
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/waiter")
+def waiter():
+    return render_template("waiter.html")
+
+@app.route("/kitchen")
+def kitchen():
+    return render_template("kitchen.html")
+
+@app.route("/admin")
+def admin_menu():
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "add_or_update":
+            category = request.form["category"]
+            name = request.form["name"]
+            price = float(request.form["price"])
+            description = request.form["description"]
+            item_id = request.form.get("item_id")
+            
+            if item_id:
+                # 修改
+                item = MenuItem.query.get(item_id)
+                if item:
+                    item.category = category
+                    item.name = name
+                    item.price = price
+                    item.description = description
+                    item.available = 1
+            else:
+                # 新增
+                item = MenuItem(category=category, name=name, price=price, description=description, available=1)
+                db.session.add(item)
+            
+            db.session.commit()
+        
+        elif action == "delete":
+            item_id = request.form["item_id"]
+            item = MenuItem.query.get(item_id)
+            if item:
+                db.session.delete(item)
+                db.session.commit()
+        
+        return redirect(url_for("admin_menu"))
+    
+    # GET：顯示菜單
+    items = MenuItem.query.order_by(MenuItem.category, MenuItem.id).all()
+    menu_items = [item.to_dict() for item in items]
+    return render_template("admin.html", menu_items=menu_items)
+
 @app.route("/api/menu", methods=["GET"])
 def get_menu():
     items = MenuItem.query.filter_by(available=1).order_by(MenuItem.category, MenuItem.name).all()
@@ -22,7 +76,11 @@ def get_menu():
 
 @app.route("/api/orders", methods=["GET"])
 def get_orders():
-    orders = Order.query.order_by(Order.created_at.desc()).all()
+    filter_status = request.args.get("filter")
+    query = Order.query.order_by(Order.created_at.desc())
+    if filter_status and filter_status != "all":
+        query = query.filter_by(status=filter_status)
+    orders = query.all()
     order_list = [order.to_dict() for order in orders]
     for order in order_list:
         order['items'] = json.loads(order['items'])
@@ -82,50 +140,17 @@ def update_order_status(order_id):
     socketio.emit("order_updated", order_data)
     return jsonify(order_data)
 
-# 管理路由（/admin）更新
-@app.route("/admin", methods=["GET", "POST"])
-def admin_menu():
-    if request.method == "POST":
-        action = request.form.get("action")
-        
-        if action == "add_or_update":
-            category = request.form["category"]
-            name = request.form["name"]
-            price = float(request.form["price"])
-            description = request.form["description"]
-            item_id = request.form.get("item_id")
-            
-            if item_id:
-                # 修改
-                item = MenuItem.query.get(item_id)
-                if item:
-                    item.category = category
-                    item.name = name
-                    item.price = price
-                    item.description = description
-                    item.available = 1
-            else:
-                # 新增
-                item = MenuItem(category=category, name=name, price=price, description=description, available=1)
-                db.session.add(item)
-            
-            db.session.commit()
-        
-        elif action == "delete":
-            item_id = request.form["item_id"]
-            item = MenuItem.query.get(item_id)
-            if item:
-                db.session.delete(item)
-                db.session.commit()
-        
-        return redirect(url_for("admin_menu"))
-    
-    # GET：顯示菜單
-    items = MenuItem.query.order_by(MenuItem.category, MenuItem.id).all()
-    menu_items = [item.to_dict() for item in items]
-    return render_template("admin.html", menu_items=menu_items)
-
-# 其他路由（如 /, /waiter, /kitchen）保持不變
+@app.route("/api/orders/<int:order_id>", methods=["DELETE"])
+def delete_order(order_id):
+    order = Order.query.get_or_404(order_id)
+    try:
+        db.session.delete(order)
+        db.session.commit()
+        socketio.emit("order_deleted", {"order_id": order_id})
+        return jsonify({"message": "Order deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     socketio.run(app, host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "5000")), debug=True, allow_unsafe_werkzeug=True)
