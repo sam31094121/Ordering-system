@@ -1,6 +1,6 @@
 let orders = [];
 let currentFilter = 'all';
-let socket; // 全域 socket 變數
+let socket;
 
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
@@ -68,7 +68,7 @@ async function confirmDeleteOrder(orderId) {
             console.error('刪除訂單錯誤:', error.message);
             showAlert(`刪除訂單失敗: ${error.message}`, 'danger');
             if (error.message.includes('404')) {
-                loadOrders(); // 404 時刷新訂單
+                loadOrders();
             }
         }
     }
@@ -90,7 +90,6 @@ async function loadOrders() {
             }
             console.log('訂單時間檢查:', order.id, 'created_at:', order.created_at);
         }
-        // 按 created_at 降序排序
         orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         displayOrders();
     } catch (error) {
@@ -206,7 +205,7 @@ async function updateStatus(orderId, newStatus) {
         console.error('更新狀態錯誤:', error.message);
         showAlert(`更新狀態失敗: ${error.message}`, 'danger');
         if (error.message.includes('404')) {
-            loadOrders(); // 404 時刷新訂單
+            loadOrders();
         }
     }
 }
@@ -217,7 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('connect', () => {
         console.log('連接到伺服器');
         loadOrders();
-        // 每 60 秒刷新訂單
         setInterval(loadOrders, 60000);
     });
 
@@ -227,7 +225,6 @@ document.addEventListener('DOMContentLoaded', () => {
             order.items = JSON.parse(order.items);
         }
         orders.unshift(order);
-        // 按 created_at 降序排序
         orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         displayOrders();
         showAlert('收到新訂單！', 'success');
@@ -244,7 +241,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             orders.push(updatedOrder);
         }
-        // 按 created_at 降序排序
         orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         displayOrders();
     });
