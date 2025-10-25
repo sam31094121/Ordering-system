@@ -58,26 +58,18 @@ async function confirmDeleteOrder(orderId) {
         try {
             const response = await fetch(`/api/orders/${orderId}`, {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
-            
             if (!response.ok) {
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    const errorData = await response.json();
-                    throw new Error(`刪除訂單失敗: ${errorData.error || '未知錯誤'}`);
-                } else {
-                    throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}${response.status === 404 ? '（訂單可能已不存在）' : ''}`);
-                }
+                throw new Error(response.status === 404 ? '訂單可能已不存在' : `刪除訂單失敗: ${response.status}`);
             }
-            
-            // 等待服務端廣播 order_deleted 事件
             showAlert('訂單已成功刪除', 'success');
         } catch (error) {
-            console.error('Error deleting order:', error);
-            showAlert(`刪除訂單時發生錯誤: ${error.message}`, 'danger');
+            console.error('刪除訂單錯誤:', error.message);
+            showAlert(`刪除訂單失敗: ${error.message}`, 'danger');
+            if (error.message.includes('404')) {
+                loadOrders(); // 404 時刷新訂單
+            }
         }
     }
 }
@@ -88,7 +80,7 @@ async function loadOrders() {
         console.log('正在載入訂單:', url);
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
+            throw new Error(`載入訂單失敗: ${response.status}`);
         }
         orders = await response.json();
         console.log('收到訂單:', orders);
@@ -96,32 +88,35 @@ async function loadOrders() {
             if (typeof order.items === 'string') {
                 order.items = JSON.parse(order.items);
             }
+            console.log('訂單時間檢查:', order.id, 'created_at:', order.created_at);
         }
         // 按 created_at 降序排序
         orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         displayOrders();
     } catch (error) {
-        console.error('載入訂單錯誤:', error);
+        console.error('載入訂單錯誤:', error.message);
         showAlert('載入訂單時發生錯誤', 'danger');
     }
 }
 
 function formatOrderTime(createdAt) {
-    // 直接使用 UTC 時間並指定顯示為 Asia/Taipei (CST)
     try {
         const date = new Date(createdAt);
         if (isNaN(date.getTime())) {
-            console.error('Invalid created_at format:', createdAt);
+            console.error('無效的 created_at 格式:', createdAt);
             return '無效時間';
         }
-        return date.toLocaleTimeString('zh-TW', {
+        const formatter = new Intl.DateTimeFormat('zh-TW', {
             hour: '2-digit',
             minute: '2-digit',
-            hour12: false, // 24 小時制
+            hour12: false,
             timeZone: 'Asia/Taipei'
         });
+        const formattedTime = formatter.format(date);
+        console.log('格式化時間:', createdAt, '->', formattedTime);
+        return formattedTime;
     } catch (error) {
-        console.error('Error formatting time:', error, 'createdAt:', createdAt);
+        console.error('時間格式化錯誤:', error.message, 'createdAt:', createdAt);
         return '時間格式錯誤';
     }
 }
@@ -149,7 +144,7 @@ function displayOrders() {
     let html = '';
     filteredOrders.forEach(order => {
         const statusClass = `status-${order.status}`;
-        const orderTime = formatOrderTime(order.created_at); // 使用新函數
+        const orderTime = formatOrderTime(order.created_at);
         
         html += `
             <div class="col-lg-4 col-md-6">
@@ -200,36 +195,30 @@ async function updateStatus(orderId, newStatus) {
     try {
         const response = await fetch(`/api/orders/${orderId}/status`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
         });
-        
         if (!response.ok) {
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                const errorData = await response.json();
-                throw new Error(`更新訂單狀態失敗: ${errorData.error || '未知錯誤'}`);
-            } else {
-                throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}${response.status === 404 ? '（訂單可能已不存在）' : ''}`);
-            }
+            throw new Error(response.status === 404 ? '訂單可能已不存在' : `更新狀態失敗: ${response.status}`);
         }
-        
-        // 等待服務端 order_updated 廣播
         showAlert('訂單狀態更新成功', 'success');
     } catch (error) {
-        console.error('更新狀態錯誤:', error);
-        showAlert(`更新狀態時發生錯誤: ${error.message}`, 'danger');
+        console.error('更新狀態錯誤:', error.message);
+        showAlert(`更新狀態失敗: ${error.message}`, 'danger');
+        if (error.message.includes('404')) {
+            loadOrders(); // 404 時刷新訂單
+        }
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    socket = io(); // 將 socket 設為全域變數
+    socket = io();
 
     socket.on('connect', () => {
         console.log('連接到伺服器');
         loadOrders();
+        // 每 60 秒刷新訂單
+        setInterval(loadOrders, 60000);
     });
 
     socket.on('new_order', (order) => {
@@ -253,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (index !== -1) {
             orders[index] = updatedOrder;
         } else {
-            orders.push(updatedOrder); // 若訂單不存在，添加到列表
+            orders.push(updatedOrder);
         }
         // 按 created_at 降序排序
         orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -275,10 +264,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('input[name="filter"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             currentFilter = e.target.value;
-            displayOrders(); // 直接重新渲染
+            displayOrders();
         });
     });
 });
-
-
 
