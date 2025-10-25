@@ -20,7 +20,9 @@ class MenuItem(db.Model):
             'name': self.name,
             'price': self.price,
             'description': self.description,
-            'category': self.category
+            'category': self.category,
+            'available': self.available,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
 class Order(db.Model):
