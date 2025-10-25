@@ -88,7 +88,10 @@ async function loadOrders() {
         orders = await response.json();
         console.log('收到訂單:', orders);
         for (let order of orders) {
-            order.items = JSON.parse(order.items);
+            // 檢查 items 是否已為陣列，若不是則解析
+            if (typeof order.items === 'string') {
+                order.items = JSON.parse(order.items);
+            }
         }
         displayOrders();
     } catch (error) {
@@ -242,4 +245,5 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
 
