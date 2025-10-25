@@ -2,7 +2,10 @@ import os
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-import eventlet  # 確保導入 eventlet，這是關鍵
+import eventlet  # 確保導入 eventlet
+
+# 修補 eventlet 以避免鎖問題
+eventlet.monkey_patch()
 
 db = SQLAlchemy()
 
@@ -57,13 +60,12 @@ def init_db(app):
         app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
         # 關閉修改追蹤（提升效能）
         app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        # 添加連線池配置，與 eventlet 兼容
+        # 優化連線池設定（移除 GreenPool，保留基本參數）
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
             'pool_pre_ping': True,  # 檢查連線是否有效
             'pool_size': 5,        # 最多 5 個連線
             'max_overflow': 10,    # 額外連線上限
-            'pool_timeout': 30,    # 等待連線的時間（秒）
-            'poolclass': eventlet.GreenPool  # 使用 eventlet 的連線池
+            'pool_timeout': 30     # 等待連線的時間（秒）
         }
         # 初始化資料庫
         db.init_app(app)
